@@ -37,14 +37,14 @@ def wiki_search(topic, limit=12):
 
 
 def wiki_article(title, max_chars):
-    # MediaWiki TextExtracts supports up to 10 sentences per request.
-    # Keeping the extract sentence-based avoids selecting tiny one-sentence stubs.
     params = {
         "action": "query",
-        "prop": "extracts|info",
+        "prop": "extracts|info|pageimages",
         "exintro": 1,
         "exsentences": 10,
         "explaintext": 1,
+        "piprop": "thumbnail",
+        "pithumbsize": 1400,
         "inprop": "url",
         "titles": title,
         "format": "json",
@@ -66,10 +66,14 @@ def wiki_article(title, max_chars):
         return None
 
     extract = clean(page.get("extract", ""))
+    thumbnail = page.get("thumbnail", {})
     return {
         "title": page.get("title", title),
         "extract": extract[:max_chars],
         "url": page.get("fullurl", ""),
+        "image_url": thumbnail.get("source", ""),
+        "image_width": thumbnail.get("width"),
+        "image_height": thumbnail.get("height"),
     }
 
 
@@ -149,7 +153,10 @@ def make_package(article):
 
     return {
         "title": f"The Strange Story of {title}"[:95],
-        "description": f"Factual short about {title}. Source: {article['url']}",
+        "description": (
+            f"Factual short about {title}. Source: {article['url']}\n"
+            f"Visual reference: {article.get('image_url', '')}"
+        ),
         "hashtags": ["#shorts", "#facts", "#history", "#science"],
         "hook": hook,
         "narration": narration,
@@ -157,6 +164,7 @@ def make_package(article):
         "topic": article["topic"],
         "source": article["url"],
         "source_title": title,
+        "image_url": article.get("image_url", ""),
     }
 
 
@@ -167,7 +175,7 @@ def synthesize_speech(text, output):
             "-v",
             "en-us",
             "-s",
-            "165",
+            "158",
             "-p",
             "48",
             "-a",
@@ -252,3 +260,7 @@ def run_pipeline(config, root):
         json.dumps(result, indent=2), encoding="utf-8"
     )
     return result
+
+
+if __name__ == "__main__":
+    pass
