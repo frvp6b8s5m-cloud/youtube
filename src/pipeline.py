@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import requests
 
 from .render import render_short
+from .trends import fetch_trends
 from .youtube import upload_video
 
 WIKI_API = "https://en.wikipedia.org/w/api.php"
@@ -165,13 +166,19 @@ def caption(text):
     return text if len(words) <= 11 else " ".join(words[:11]) + "…"
 
 
-def make_package(article):
+def make_package(article, trend=None):
     facts = sentences(article["extract"])
     if len(facts) < 5:
         raise RuntimeError("Source did not contain enough factual sentences.")
 
     title = article["title"].strip()
-    hook = f"Most people have never heard the strange story of {title}."
+    trend_query = (trend or {}).get("query", "").strip()
+    if trend_query:
+        hook = f"{trend_query} is trending right now. Here is the strange, documented story behind it."
+        video_title = f"The Strange Story Behind {trend_query}"
+    else:
+        hook = f"Most people have never heard the strange story of {title}."
+        video_title = f"The Strange Story of {title}"
     selected = facts[:6]
     narration = " ".join([hook] + selected[:5])[:1100]
 
@@ -205,7 +212,7 @@ def make_package(article):
     )
 
     return {
-        "title": f"The Strange Story of {title}"[:95],
+        "title": video_title[:95],
         "description": (
             f"Factual short about {title}. Source: {article['url']}\n"
             f"{credit}"
@@ -215,6 +222,9 @@ def make_package(article):
         "narration": narration,
         "scenes": scenes,
         "topic": article["topic"],
+        "trend_query": trend_query,
+        "trend_traffic": (trend or {}).get("traffic", ""),
+        "trend_url": (trend or {}).get("url", ""),
         "source": article["url"],
         "source_title": title,
         "image_url": article.get("image_url", ""),
@@ -270,9 +280,21 @@ def run_pipeline(config, root):
     job = root / "work" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     job.mkdir(parents=True, exist_ok=True)
 
-    topic = random.choice(config["topic_pool"])
-    article = research(topic, config)
-    package = make_package(article)
+    trend_candidates = []
+    try:
+        trend_candidates = fetch_trends(config)
+    except Exception as exc:
+        print(f"Trend feed unavailable, falling back to evergreen topics: {exc}")
+
+    trend = random.choice(trend_candidates) if trend_candidates else None
+    if trend:
+        topic = trend["query"]
+        article = research(topic, config)
+    else:
+        topic = random.choice(config["topic_pool"])
+        article = research(topic, config)
+
+    package = make_package(article, trend)
 
     (job / "research.json").write_text(
         json.dumps(article, indent=2), encoding="utf-8"
@@ -310,6 +332,8 @@ def run_pipeline(config, root):
         "duration_seconds": seconds,
         "topic": package["topic"],
         "source": package["source"],
+        "trend_query": package.get("trend_query", ""),
+        "trend_traffic": package.get("trend_traffic", ""),
         "job": str(job),
     }
     (job / "result.json").write_text(
