@@ -286,11 +286,21 @@ def run_pipeline(config, root):
     except Exception as exc:
         print(f"Trend feed unavailable, falling back to evergreen topics: {exc}")
 
-    trend = random.choice(trend_candidates) if trend_candidates else None
-    if trend:
-        topic = trend["query"]
-        article = research(topic, config)
-    else:
+    trend = None
+    article = None
+    if trend_candidates:
+        candidates = trend_candidates[:10]
+        random.shuffle(candidates)
+        for candidate in candidates:
+            try:
+                article = research(candidate["query"], config)
+                trend = candidate
+                break
+            except RuntimeError as exc:
+                print(f"Skipping trend {candidate['query']!r}: {exc}")
+
+    if article is None:
+        trend = None
         topic = random.choice(config["topic_pool"])
         article = research(topic, config)
 
