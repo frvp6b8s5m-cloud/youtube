@@ -15,47 +15,101 @@ USER_AGENT = "CloudShortsFactory/1.0"
 
 
 def clean(text):
-    return re.sub(r"\\s+", " ", (text or "").strip())
+    return re.sub(r"\s+", " ", (text or "").strip())
 
 
-def wiki_search(topic, limit=8):
-    params = {"action": "query", "list": "search", "srsearch": topic, "srlimit": limit, "format": "json"}
-    response = requests.get(WIKI_API, params=params, headers={"User-Agent": USER_AGENT}, timeout=20)
+def wiki_search(topic, limit=12):
+    params = {
+        "action": "query",
+        "list": "search",
+        "srsearch": topic,
+        "srlimit": limit,
+        "format": "json",
+    }
+    response = requests.get(
+        WIKI_API,
+        params=params,
+        headers={"User-Agent": USER_AGENT},
+        timeout=20,
+    )
     response.raise_for_status()
     return [item["title"] for item in response.json().get("query", {}).get("search", [])]
 
 
 def wiki_article(title, max_chars):
+    # MediaWiki TextExtracts supports up to 10 sentences per request.
+    # Keeping the extract sentence-based avoids selecting tiny one-sentence stubs.
     params = {
-        "action": "query", "prop": "extracts|info", "exintro": 1,
-        "explaintext": 1, "inprop": "url", "titles": title,
-        "format": "json", "redirects": 1,
+        "action": "query",
+        "prop": "extracts|info",
+        "exintro": 1,
+        "exsentences": 10,
+        "explaintext": 1,
+        "inprop": "url",
+        "titles": title,
+        "format": "json",
+        "redirects": 1,
     }
-    response = requests.get(WIKI_API, params=params, headers={"User-Agent": USER_AGENT}, timeout=20)
+    response = requests.get(
+        WIKI_API,
+        params=params,
+        headers={"User-Agent": USER_AGENT},
+        timeout=20,
+    )
     response.raise_for_status()
     pages = response.json().get("query", {}).get("pages", {})
+    if not pages:
+        return None
+
     page = next(iter(pages.values()))
+    if "missing" in page:
+        return None
+
+    extract = clean(page.get("extract", ""))
     return {
         "title": page.get("title", title),
-        "extract": clean(page.get("extract", ""))[:max_chars],
+        "extract": extract[:max_chars],
         "url": page.get("fullurl", ""),
     }
+
+
+def sentences(text):
+    text = clean(text)
+    parts = re.split(r"(?<=[.!?])\s+", text)
+    return [p.strip() for p in parts if len(p.strip()) > 35]
 
 
 def research(topic, config):
     titles = wiki_search(topic)
     random.shuffle(titles)
-    max_chars = int(config.get("wikipedia", {}).get("max_summary_chars", 2400))
-    for title in titles[:6]:
+    max_chars = min(
+        int(config.get("wikipedia", {}).get("max_summary_chars", 1200)),
+        1200,
+    )
+
+    candidates = []
+    for title in titles:
         article = wiki_article(title, max_chars)
-        if len(article["extract"]) >= 400:
+        if not article:
+            continue
+
+        facts = sentences(article["extract"])
+        if len(facts) >= 5:
             article["topic"] = topic
+            article["sentence_count"] = len(facts)
             return article
+
+        candidates.append((len(facts), article))
+
+    if candidates:
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        best_count, best = candidates[0]
+        raise RuntimeError(
+            f"No source contained enough factual sentences for a short; "
+            f"best source had {best_count}, need at least 5."
+        )
+
     raise RuntimeError("No sufficiently detailed factual source was found.")
-
-
-def sentences(text):
-    return [p.strip() for p in re.split(r"(?<=[.!?])\\s+", text) if len(p.strip()) > 35]
 
 
 def caption(text):
@@ -65,7 +119,7 @@ def caption(text):
 
 def make_package(article):
     facts = sentences(article["extract"])
-    if len(facts) < 4:
+    if len(facts) < 5:
         raise RuntimeError("Source did not contain enough factual sentences.")
 
     title = article["title"].strip()
@@ -83,10 +137,15 @@ def make_package(article):
     ]
     scenes = []
     for i, fact in enumerate(selected):
-        scenes.append({
-            "visual_prompt": f"{styles[i]} about {title}; visually represent this documented fact: {fact}",
-            "on_screen_text": caption(fact),
-        })
+        scenes.append(
+            {
+                "visual_prompt": (
+                    f"{styles[i]} about {title}; "
+                    f"visually represent this documented fact: {fact}"
+                ),
+                "on_screen_text": caption(fact),
+            }
+        )
 
     return {
         "title": f"The Strange Story of {title}"[:95],
@@ -102,17 +161,40 @@ def make_package(article):
 
 
 def synthesize_speech(text, output):
-    subprocess.run([
-        "espeak-ng", "-v", "en-us", "-s", "165", "-p", "48",
-        "-a", "170", "-w", str(output), text
-    ], check=True)
+    subprocess.run(
+        [
+            "espeak-ng",
+            "-v",
+            "en-us",
+            "-s",
+            "165",
+            "-p",
+            "48",
+            "-a",
+            "170",
+            "-w",
+            str(output),
+            text,
+        ],
+        check=True,
+    )
 
 
 def duration(path):
     result = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-        capture_output=True, text=True, check=True,
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return float(result.stdout.strip())
 
@@ -128,8 +210,12 @@ def run_pipeline(config, root):
     article = research(topic, config)
     package = make_package(article)
 
-    (job / "research.json").write_text(json.dumps(article, indent=2), encoding="utf-8")
-    (job / "package.json").write_text(json.dumps(package, indent=2), encoding="utf-8")
+    (job / "research.json").write_text(
+        json.dumps(article, indent=2), encoding="utf-8"
+    )
+    (job / "package.json").write_text(
+        json.dumps(package, indent=2), encoding="utf-8"
+    )
 
     audio = job / "voice.wav"
     synthesize_speech(package["narration"], audio)
@@ -141,11 +227,14 @@ def run_pipeline(config, root):
     if not 10 <= seconds <= 60:
         raise RuntimeError(f"QA failed: duration={seconds:.2f}s")
 
-    privacy = os.getenv("YOUTUBE_PRIVACY_STATUS", config.get("privacy_status", "private"))
+    privacy = os.getenv(
+        "YOUTUBE_PRIVACY_STATUS",
+        config.get("privacy_status", "private"),
+    )
     video_id = upload_video(
         video,
         package["title"],
-        package["description"] + "\\n\\n" + " ".join(package["hashtags"]),
+        package["description"] + "\n\n" + " ".join(package["hashtags"]),
         config.get("category_id", "22"),
         privacy,
     )
@@ -159,5 +248,7 @@ def run_pipeline(config, root):
         "source": package["source"],
         "job": str(job),
     }
-    (job / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    (job / "result.json").write_text(
+        json.dumps(result, indent=2), encoding="utf-8"
+    )
     return result
