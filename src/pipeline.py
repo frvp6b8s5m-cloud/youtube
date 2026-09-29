@@ -11,6 +11,7 @@ from .render import render_short
 from .youtube import upload_video
 
 WIKI_API = "https://en.wikipedia.org/w/api.php"
+COMMONS_API = "https://commons.wikimedia.org/w/api.php"
 USER_AGENT = "CloudShortsFactory/1.0"
 
 
@@ -39,12 +40,10 @@ def wiki_search(topic, limit=12):
 def wiki_article(title, max_chars):
     params = {
         "action": "query",
-        "prop": "extracts|info|pageimages",
+        "prop": "extracts|info",
         "exintro": 1,
         "exsentences": 10,
         "explaintext": 1,
-        "piprop": "thumbnail",
-        "pithumbsize": 1400,
         "inprop": "url",
         "titles": title,
         "format": "json",
@@ -66,15 +65,59 @@ def wiki_article(title, max_chars):
         return None
 
     extract = clean(page.get("extract", ""))
-    thumbnail = page.get("thumbnail", {})
     return {
         "title": page.get("title", title),
         "extract": extract[:max_chars],
         "url": page.get("fullurl", ""),
-        "image_url": thumbnail.get("source", ""),
-        "image_width": thumbnail.get("width"),
-        "image_height": thumbnail.get("height"),
     }
+
+
+def commons_visual(title, topic):
+    params = {
+        "action": "query",
+        "generator": "search",
+        "gsrsearch": f"{title} {topic}",
+        "gsrnamespace": 6,
+        "gsrlimit": 8,
+        "prop": "imageinfo",
+        "iiprop": "url|mime|extmetadata",
+        "iiurlwidth": 1400,
+        "format": "json",
+    }
+    response = requests.get(
+        COMMONS_API,
+        params=params,
+        headers={"User-Agent": USER_AGENT},
+        timeout=20,
+    )
+    response.raise_for_status()
+
+    pages = response.json().get("query", {}).get("pages", {})
+    candidates = list(pages.values())
+    random.shuffle(candidates)
+
+    for page in candidates:
+        info = (page.get("imageinfo") or [{}])[0]
+        mime = info.get("mime", "")
+        url = info.get("thumburl") or info.get("url")
+        if not url or not mime.startswith("image/"):
+            continue
+
+        metadata = info.get("extmetadata", {})
+        license_name = clean(
+            metadata.get("LicenseShortName", {}).get("value", "")
+        )
+        artist = clean(metadata.get("Artist", {}).get("value", ""))
+
+        return {
+            "image_url": url,
+            "image_page": f"https://commons.wikimedia.org/wiki/{page.get('title', '').replace(' ', '_')}",
+            "image_title": page.get("title", ""),
+            "image_license": license_name,
+            "image_artist": artist,
+        }
+
+    return {}
 
 
 def sentences(text):
@@ -101,6 +144,7 @@ def research(topic, config):
         if len(facts) >= 5:
             article["topic"] = topic
             article["sentence_count"] = len(facts)
+            article.update(commons_visual(article["title"], topic))
             return article
 
         candidates.append((len(facts), article))
@@ -151,11 +195,20 @@ def make_package(article):
             }
         )
 
+    visual_credit = article.get("image_page", "")
+    visual_license = article.get("image_license", "")
+    visual_artist = article.get("image_artist", "")
+    credit = (
+        f"Visual: {visual_credit} "
+        f"({visual_license or 'Wikimedia Commons'}"
+        f"{', ' + visual_artist if visual_artist else ''})"
+    )
+
     return {
         "title": f"The Strange Story of {title}"[:95],
         "description": (
             f"Factual short about {title}. Source: {article['url']}\n"
-            f"Visual reference: {article.get('image_url', '')}"
+            f"{credit}"
         ),
         "hashtags": ["#shorts", "#facts", "#history", "#science"],
         "hook": hook,
@@ -165,6 +218,9 @@ def make_package(article):
         "source": article["url"],
         "source_title": title,
         "image_url": article.get("image_url", ""),
+        "image_page": visual_credit,
+        "image_license": visual_license,
+        "image_artist": visual_artist,
     }
 
 
@@ -260,7 +316,3 @@ def run_pipeline(config, root):
         json.dumps(result, indent=2), encoding="utf-8"
     )
     return result
-
-
-if __name__ == "__main__":
-    pass
