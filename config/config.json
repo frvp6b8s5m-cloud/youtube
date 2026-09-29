@@ -1,5 +1,6 @@
 {
-  "interval_minutes": 10,
+  "interval_minutes": 72,
+  "daily_target": 20,
   "duration_seconds": 38,
   "category_id": "22",
   "privacy_status": "private",
