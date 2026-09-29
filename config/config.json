@@ -3,6 +3,9 @@
   "duration_seconds": 38,
   "category_id": "22",
   "privacy_status": "public",
+  "model": "gpt-5.6-luna",
+  "tts_model": "gpt-4o-mini-tts",
+  "tts_voice": "alloy",
   "topic_pool": [
     "strange historical inventions",
     "unexplained engineering failures",
