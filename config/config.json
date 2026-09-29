@@ -2,10 +2,7 @@
   "interval_minutes": 60,
   "duration_seconds": 38,
   "category_id": "22",
-  "privacy_status": "public",
-  "model": "gpt-5.6-luna",
-  "tts_model": "gpt-4o-mini-tts",
-  "tts_voice": "alloy",
+  "privacy_status": "private",
   "topic_pool": [
     "strange historical inventions",
     "unexplained engineering failures",
@@ -14,5 +11,9 @@
     "bizarre moments in history",
     "mysteries with documented evidence",
     "extreme natural phenomena"
-  ]
+  ],
+  "wikipedia": {
+    "language": "en",
+    "max_summary_chars": 2400
+  }
 }
