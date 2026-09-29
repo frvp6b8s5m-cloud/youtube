@@ -1,0 +1,17 @@
+{
+  "model": "gpt-5.6-luna",
+  "voice_model": "gpt-4o-mini-tts",
+  "voice": "alloy",
+  "duration_seconds": 38,
+  "category_id": "22",
+  "privacy_status": "public",
+  "topic_pool": [
+    "strange historical inventions",
+    "unexplained engineering failures",
+    "weird science facts",
+    "forgotten technology",
+    "bizarre moments in history",
+    "mysteries with documented evidence",
+    "extreme natural phenomena"
+  ]
+}
