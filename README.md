@@ -1,20 +1,29 @@
-# YouTube Shorts Factory
+# Local Shorts Factory
 
-Automated hourly YouTube Shorts generator and publisher.
+A local-first YouTube Shorts autopilot.
 
-Pipeline: idea -> script -> OpenAI TTS -> animated 9:16 render -> QA -> YouTube upload -> log.
+## What it does
+1. Chooses a topic.
+2. Uses a local Ollama model to write the Short.
+3. Uses a local Piper voice to narrate it.
+4. Renders a vertical 1080x1920 video with captions and animation.
+5. Runs a duration QA check.
+6. Publishes through the official YouTube API.
+7. Repeats automatically every hour.
+8. Provides a local web dashboard at http://127.0.0.1:8000.
 
-The GitHub Actions workflow runs at the top of every hour and can also be started manually.
+## One-time setup
+- Install Python 3.12+
+- Install FFmpeg
+- Install Ollama and pull a local model such as llama3.2:3b
+- Install Piper and download a Piper .onnx voice model.
+- Complete YouTube OAuth once and set YOUTUBE_TOKEN_JSON to the token JSON.
+- Set PIPER_MODEL to the absolute path of the Piper .onnx model.
 
-Required GitHub Actions secrets:
-- OPENAI_API_KEY
-- YOUTUBE_CLIENT_SECRETS_JSON
-- YOUTUBE_TOKEN_JSON
+## Run
+Set the environment variables in your shell, then run: python run_factory.py
 
-Run python scripts/auth_youtube.py locally once to create youtube_token.json, then put that JSON into YOUTUBE_TOKEN_JSON.
-Create Google OAuth desktop-app credentials and put the downloaded JSON in client_secrets.json.
-Required YouTube scope: https://www.googleapis.com/auth/youtube.upload
+Leave that process running. It hosts the dashboard and runs the hourly publisher.
 
-Set YOUTUBE_PRIVACY_STATUS=private while testing. The default workflow uses public.
-
-GitHub Actions cron is best-effort and may be delayed; it is configured once per hour, not guaranteed at an exact minute.
+## Important
+The computer must remain powered on and the process must remain running for hourly jobs. YouTube authorization is the only external service required for publishing. Generation itself is local.
