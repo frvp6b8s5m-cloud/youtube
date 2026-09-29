@@ -1,7 +1,5 @@
 {
-  "model": "gpt-5.6-luna",
-  "voice_model": "gpt-4o-mini-tts",
-  "voice": "alloy",
+  "interval_minutes": 60,
   "duration_seconds": 38,
   "category_id": "22",
   "privacy_status": "public",
