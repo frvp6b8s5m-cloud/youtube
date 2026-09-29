@@ -1,29 +1,58 @@
-# Local Shorts Factory
+# Cloud YouTube Shorts Factory
 
-A local-first YouTube Shorts autopilot.
+A cloud-only YouTube Shorts autopilot. Nothing needs to be installed on your computer.
 
 ## What it does
-1. Chooses a topic.
-2. Uses a local Ollama model to write the Short.
-3. Uses a local Piper voice to narrate it.
-4. Renders a vertical 1080x1920 video with captions and animation.
-5. Runs a duration QA check.
-6. Publishes through the official YouTube API.
-7. Repeats automatically every hour.
-8. Provides a local web dashboard at http://127.0.0.1:8000.
 
-## One-time setup
-- Install Python 3.12+
-- Install FFmpeg
-- Install Ollama and pull a local model such as llama3.2:3b
-- Install Piper and download a Piper .onnx voice model.
-- Complete YouTube OAuth once and set YOUTUBE_TOKEN_JSON to the token JSON.
-- Set PIPER_MODEL to the absolute path of the Piper .onnx model.
+1. Runs automatically from GitHub Actions.
+2. Chooses a topic from the configured topic pool.
+3. Uses OpenAI to generate an original Short package.
+4. Uses OpenAI text-to-speech to create narration.
+5. Builds a vertical 1080x1920 Short with animated visuals, captions, and narration.
+6. Runs duration/format QA.
+7. Publishes the finished video through the official YouTube Data API.
+8. Repeats on the hourly GitHub Actions schedule.
 
-## Run
-Set the environment variables in your shell, then run: python run_factory.py
+## Cloud architecture
 
-Leave that process running. It hosts the dashboard and runs the hourly publisher.
+GitHub Actions -> OpenAI -> cloud video renderer -> YouTube
+
+The GitHub Actions runner is temporary. Generated work files disappear after each run, so your computer does not need to stay on.
+
+## Required GitHub secrets
+
+Add these in the repository's **Settings -> Secrets and variables -> Actions**:
+
+- `OPENAI_API_KEY`
+- `YOUTUBE_TOKEN_JSON`
+
+Never commit either secret to the repository.
+
+### YouTube authorization
+
+YouTube publishing requires one-time OAuth authorization for the channel. The resulting authorized-user token JSON is stored as the `YOUTUBE_TOKEN_JSON` GitHub secret.
+
+## Configuration
+
+Edit `config/config.json` to change:
+
+- posting interval/schedule
+- Short duration
+- topic categories
+- YouTube privacy status
+- OpenAI text model
+- OpenAI TTS model and voice
+
+## Manual run
+
+GitHub Actions also exposes **Run workflow**, so you can trigger a Short manually without installing anything.
 
 ## Important
-The computer must remain powered on and the process must remain running for hourly jobs. YouTube authorization is the only external service required for publishing. Generation itself is local.
+
+GitHub Actions scheduling is best-effort, so an hourly job can start a little later than the exact minute. OpenAI API usage and YouTube API usage are subject to their current quotas/pricing.
+
+## Security
+
+- API keys are read only from environment variables.
+- No secrets are stored in source code.
+- YouTube uploads use Google's official API and OAuth.
